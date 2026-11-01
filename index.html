@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deep Sea Rescue</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect fill='%2306243a' width='16' height='16'/%3E%3Crect fill='%23f0c14b' x='2' y='7' width='11' height='4'/%3E%3Crect fill='%23b9f4ff' x='8' y='5' width='3' height='2'/%3E%3C/svg%3E">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Deep Sea Rescue</h1>
+      <p>Rescue divers. Watch your oxygen.</p>
+    </header>
+    <div class="stage">
+      <canvas id="game" width="960" height="600" aria-label="Deep Sea Rescue game canvas"></canvas>
+    </div>
+    <div class="controls">
+      <button id="btn-start" class="primary" type="button">Start</button>
+      <button id="btn-pause" type="button" disabled>Pause</button>
+      <button id="btn-restart" type="button">Restart</button>
+    </div>
+    <p class="help">Move: Arrow keys or WASD · Fire: Space · Pause: P · Mute: M</p>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
