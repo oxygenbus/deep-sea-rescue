@@ -222,6 +222,30 @@ function tone(freq, dur, type, vol, slide) {
   osc.stop(t + dur);
 }
 
+function noiseBurst(dur, vol) {
+  if (game.muted || !audioCtx) return;
+  const rate = audioCtx.sampleRate;
+  const length = Math.max(1, Math.floor(rate * dur));
+  const buffer = audioCtx.createBuffer(1, length, rate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+  const src = audioCtx.createBufferSource();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+  const t = audioCtx.currentTime;
+  src.buffer = buffer;
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(2200, t);
+  filter.frequency.exponentialRampToValueAtTime(140, t + dur);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  src.start(t);
+  src.stop(t + dur);
+}
+
 /* Red oxygen bar runs a looping two-tone siren until air recovers, play stops, or mute. */
 function startSiren() {
   const ctx = ensureAudio();
@@ -270,7 +294,12 @@ function updateSiren() {
 
 function sfx(name) {
   if (name === "shoot") tone(640, 0.06, "square", 0.04, 180);
-  else if (name === "explode") tone(180, 0.14, "sawtooth", 0.05, -120);
+  else if (name === "explode") {
+    noiseBurst(0.32, 0.16);
+    tone(70, 0.38, "sawtooth", 0.1, -30);
+    tone(180, 0.2, "square", 0.06, -110);
+    tone(720, 0.09, "square", 0.045, 280);
+  }
   else if (name === "pickup") tone(880, 0.07, "square", 0.04, 240);
   else if (name === "surface") {
     tone(520, 0.08, "square", 0.04, 0);
