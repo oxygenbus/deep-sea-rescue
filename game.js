@@ -44,28 +44,6 @@ const SHARK = [
   ".....FF.................",
 ];
 
-const DIVER_A = [
-  "................",
-  ".....HHHH.......",
-  "....HHHHHH......",
-  "...HHMMHHH......",
-  "..TT.HHHH.......",
-  ".TTTBBBBBB......",
-  "TTTTBBBB..FF....",
-  ".TT.B..B....FF..",
-];
-
-const DIVER_B = [
-  "................",
-  ".....HHHH.......",
-  "....HHHHHH......",
-  "...HHMMHHH......",
-  "..TT.HHHH..FF...",
-  ".TTTBBBBBBF.....",
-  "TTTTBBBBFF......",
-  ".TT.B..B..FF....",
-];
-
 const JELLY = [
   "....BBBB....",
   "...BBPPBB...",
@@ -113,14 +91,6 @@ const SHARK_PALETTE = {
   T: "#64788a",
   O: "#f7fbff",
   E: "#172026",
-};
-
-const DIVER_PALETTE = {
-  H: "#f0c2a0",
-  M: "#163044",
-  B: "#ff8a3d",
-  T: "#5ec8e8",
-  F: "#1c2430",
 };
 
 const JELLY_PALETTE = {
@@ -208,7 +178,7 @@ function spriteSize(rows, scale) {
 
 const SUB_SIZE = spriteSize(PLAYER_SUB, 3);
 const SHARK_SIZE = spriteSize(SHARK, 3);
-const DIVER_SIZE = spriteSize(DIVER_A, 2);
+const DIVER_SIZE = { w: 44, h: 24 };
 const JELLY_SIZE = spriteSize(JELLY, 3);
 const EEL_SIZE = spriteSize(EEL, 3);
 
@@ -231,6 +201,17 @@ function threat() {
 function hit(a, b, padAmount) {
   const p = padAmount || 0;
   return a.x < b.x + b.w + p && a.x + a.w > b.x - p && a.y < b.y + b.h + p && a.y + a.h > b.y - p;
+}
+
+function hullBox(e) {
+  const ix = Math.max(6, Math.floor(e.w * 0.24));
+  const iy = Math.max(4, Math.floor(e.h * 0.3));
+  return {
+    x: e.x + ix,
+    y: e.y + iy,
+    w: Math.max(8, e.w - ix * 2),
+    h: Math.max(6, e.h - iy * 2),
+  };
 }
 
 function ensureAudio() {
@@ -794,7 +775,7 @@ function handleCollisions() {
 
   if (player.invuln <= 0) {
     for (let i = 0; i < game.enemies.length; i++) {
-      if (hit(player, game.enemies[i], -2)) {
+      if (hit(hullBox(player), hullBox(game.enemies[i]))) {
         loseLife("hit");
         return;
       }
@@ -1016,6 +997,74 @@ function drawWorld() {
   }
 }
 
+function drawSwimmer(x, y, dir, time, phase) {
+  const kick = Math.sin(time * 7 + phase);
+  ctx.save();
+  ctx.translate(x + DIVER_SIZE.w / 2, y + DIVER_SIZE.h / 2);
+  ctx.scale(dir, 1);
+  ctx.lineCap = "round";
+
+  ctx.fillStyle = "#7fd4ef";
+  ctx.fillRect(-18, -5, 7, 11);
+  ctx.fillStyle = "#e8f8ff";
+  ctx.fillRect(-17, -4, 2, 4);
+  ctx.strokeStyle = "#163044";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-11, -2);
+  ctx.quadraticCurveTo(-2, -9, 9, -2);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ff8a3d";
+  ctx.beginPath();
+  ctx.ellipse(-1, 2, 12, 5.5, kick * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#f0c2a0";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(2, 0);
+  ctx.lineTo(11, -3 + kick * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-4, 1);
+  ctx.lineTo(-10, 4 - kick * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = "#f3c7a4";
+  ctx.beginPath();
+  ctx.arc(11, -1, 5.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#102033";
+  ctx.fillRect(11, -3, 6, 3);
+  ctx.fillStyle = "#9ee7ff";
+  ctx.fillRect(12, -2, 4, 2);
+
+  ctx.strokeStyle = "#ff8a3d";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-10, 2);
+  ctx.quadraticCurveTo(-15, 2 + kick * 4, -18, 1 + kick * 6);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-10, 4);
+  ctx.quadraticCurveTo(-15, 4 - kick * 4, -18, 5 - kick * 6);
+  ctx.stroke();
+
+  ctx.fillStyle = "#1b2430";
+  ctx.beginPath();
+  ctx.moveTo(-18, 1 + kick * 6);
+  ctx.lineTo(-25, -1 + kick * 8);
+  ctx.lineTo(-17, 5 + kick * 5);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-18, 5 - kick * 6);
+  ctx.lineTo(-25, 8 - kick * 8);
+  ctx.lineTo(-17, 7 - kick * 4);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawTorpedo(t) {
   const dir = t.vx >= 0 ? 1 : -1;
   ctx.fillStyle = t.friendly ? "rgba(255, 214, 90, 0.55)" : "rgba(255, 120, 90, 0.45)";
@@ -1030,10 +1079,9 @@ function drawTorpedo(t) {
 function drawEntities() {
   const time = game.time;
   for (const d of game.divers) {
-    const frame = Math.floor(time * 6 + d.phase) % 2 === 0 ? DIVER_A : DIVER_B;
     const facing = d.vx >= 0 ? 1 : -1;
-    drawSprite(ctx, frame, d.x, d.y, 2, DIVER_PALETTE, facing, time);
-    const mouth = facing > 0 ? d.x + d.w - 8 : d.x + 6;
+    drawSwimmer(d.x, d.y, facing, time, d.phase);
+    const mouth = facing > 0 ? d.x + d.w - 6 : d.x + 4;
     ctx.fillStyle = "rgba(220,245,255,0.7)";
     ctx.fillRect(mouth, d.y + 4 - (time * 18 + d.phase) % 12, 2, 2);
   }
@@ -1341,7 +1389,6 @@ function init() {
   game.highScore = loadHighScore();
   buildDecor();
   spriteSize(SHARK, 3);
-  spriteSize(DIVER_B, 2);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", () => keys.clear());
