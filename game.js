@@ -107,6 +107,7 @@ const DIVER_PALETTE = {
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d", { alpha: false });
+const view = { dpr: 1, scale: 1, ox: 0, oy: 0 };
 const startBtn = document.getElementById("btn-start");
 const pauseBtn = document.getElementById("btn-pause");
 const restartBtn = document.getElementById("btn-restart");
@@ -518,7 +519,7 @@ function updateOxygen(dt) {
     game.wasSurfaced = true;
   } else {
     game.wasSurfaced = false;
-    const drain = 4.7 * (1 + threat() * 0.55);
+    const drain = (4.7 / 1.5) * (1 + threat() * 0.55);
     player.oxygen -= drain * dt;
     if (player.oxygen <= 0) {
       player.oxygen = 0;
@@ -636,18 +637,6 @@ function handleCollisions() {
       e.dead = true;
       t.dead = true;
       sfx("explode");
-      break;
-    }
-  }
-  for (let i = 0; i < game.torpedoes.length; i++) {
-    const t = game.torpedoes[i];
-    if (!t.friendly || t.dead) continue;
-    for (let j = 0; j < game.torpedoes.length; j++) {
-      const other = game.torpedoes[j];
-      if (other.friendly || other.dead || !hit(t, other)) continue;
-      spawnExplosion((t.x + other.x) / 2, (t.y + other.y) / 2, "#ffe08a");
-      t.dead = true;
-      other.dead = true;
       break;
     }
   }
@@ -1057,11 +1046,29 @@ function drawOverlay() {
   }
 }
 
+/* The playfield stays 960x600. The window scale makes every sprite and
+   distance larger by the same factor, then centers that scene on the screen. */
+function resizeView() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  canvas.width = Math.max(1, Math.floor(vw * dpr));
+  canvas.height = Math.max(1, Math.floor(vh * dpr));
+  canvas.style.width = vw + "px";
+  canvas.style.height = vh + "px";
+  view.dpr = dpr;
+  view.scale = Math.min(vw / W, vh / H);
+  view.ox = (vw - W * view.scale) / 2;
+  view.oy = (vh - H * view.scale) / 2;
+}
+
 function render() {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "#062033";
-  ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.fillStyle = "#041018";
+  ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
   ctx.save();
+  ctx.translate(view.ox, view.oy);
+  ctx.scale(view.scale, view.scale);
   if (game.shake > 0) {
     const mag = game.shake * 6;
     ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
@@ -1069,12 +1076,16 @@ function render() {
   drawWorld();
   if (game.state !== "menu" && game.player) drawEntities();
   ctx.restore();
+  ctx.save();
+  ctx.translate(view.ox, view.oy);
+  ctx.scale(view.scale, view.scale);
   if (game.state !== "menu" && game.player) drawHUD();
   if (game.flash > 0) {
     ctx.fillStyle = "rgba(255, 70, 70, " + Math.min(0.4, game.flash) + ")";
     ctx.fillRect(0, 0, W, H);
   }
   drawOverlay();
+  ctx.restore();
 }
 
 /* Delta time is clamped so a stalled tab cannot skip the whole oxygen bar. */
@@ -1193,6 +1204,8 @@ function init() {
     ensureAudio();
     if (game.state === "menu" || game.state === "gameover") startGame();
   });
+  window.addEventListener("resize", resizeView);
+  resizeView();
   setButtons();
   if (!loopStarted) {
     loopStarted = true;
