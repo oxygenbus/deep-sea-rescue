@@ -12,6 +12,8 @@ const PLAYER_SPEED = 270;
 const FIRE_COOLDOWN = 0.28;
 const SCORE_SHARK = 40;
 const SCORE_SUB = 80;
+const SCORE_JELLY = 50;
+const SCORE_EEL = 70;
 const SCORE_DIVER = 100;
 const OXYGEN_RED = 25;
 const HIGH_KEY = "deep-sea-rescue-high-score";
@@ -43,33 +45,49 @@ const SHARK = [
 ];
 
 const DIVER_A = [
-  "...HH...",
-  "..HHHH..",
-  "..HMMH..",
-  "...HH...",
-  ".TTBBB..",
-  ".TTBBB..",
-  "..BBB...",
-  "..B.B...",
-  ".FF.FF..",
-  ".FF.FF..",
-  "..F..F..",
-  "...FF...",
+  "................",
+  ".....HHHH.......",
+  "....HHHHHH......",
+  "...HHMMHHH......",
+  "..TT.HHHH.......",
+  ".TTTBBBBBB......",
+  "TTTTBBBB..FF....",
+  ".TT.B..B....FF..",
 ];
 
 const DIVER_B = [
-  "...HH...",
-  "..HHHH..",
-  "..HMMH..",
-  "...HH...",
-  ".TTBBB..",
-  ".TTBBB..",
-  "..BBB...",
-  ".BB.BB..",
-  "FF...FF.",
-  "FF...FF.",
-  ".F...F..",
-  "........",
+  "................",
+  ".....HHHH.......",
+  "....HHHHHH......",
+  "...HHMMHHH......",
+  "..TT.HHHH..FF...",
+  ".TTTBBBBBBF.....",
+  "TTTTBBBBFF......",
+  ".TT.B..B..FF....",
+];
+
+const JELLY = [
+  "....BBBB....",
+  "...BBPPBB...",
+  "..BBPPPPBB..",
+  "..BBPEEPBB..",
+  "...BBBBBB...",
+  "....T..T....",
+  "...TT..TT...",
+  "..T..TT..T..",
+  ".T..T..T..T.",
+  "T..T....T..T",
+  ".T........T.",
+  "T..........T",
+];
+
+const EEL = [
+  "....................",
+  "...GGGGGGGG.........",
+  ".GGGGGGGGGGGGGOE....",
+  "GGGGGGGGGGGGGGG.....",
+  ".GGG.....GGGG.......",
+  "....................",
 ];
 
 const PLAYER_PALETTE = {
@@ -101,8 +119,21 @@ const DIVER_PALETTE = {
   H: "#f0c2a0",
   M: "#163044",
   B: "#ff8a3d",
-  T: "#49c2e0",
-  F: "#22282e",
+  T: "#5ec8e8",
+  F: "#1c2430",
+};
+
+const JELLY_PALETTE = {
+  B: "#d7a6ff",
+  P: "#ff8ec8",
+  E: "#2a1840",
+  T: "#b388ee",
+};
+
+const EEL_PALETTE = {
+  G: "#2fbf78",
+  O: "#f4fff8",
+  E: "#10281c",
 };
 
 const canvas = document.getElementById("game");
@@ -115,6 +146,7 @@ const restartBtn = document.getElementById("btn-restart");
 const keys = new Set();
 let audioCtx = null;
 let siren = null;
+let intake = null;
 let lastTime = 0;
 let uiTime = 0;
 let seaTime = 0;
@@ -129,6 +161,7 @@ const game = {
   flash: 0,
   deathLock: false,
   wasSurfaced: false,
+  surfaceLock: 0,
   spawnAcc: 0,
   diverAcc: 0,
   fireCd: 0,
@@ -176,6 +209,8 @@ function spriteSize(rows, scale) {
 const SUB_SIZE = spriteSize(PLAYER_SUB, 3);
 const SHARK_SIZE = spriteSize(SHARK, 3);
 const DIVER_SIZE = spriteSize(DIVER_A, 2);
+const JELLY_SIZE = spriteSize(JELLY, 3);
+const EEL_SIZE = spriteSize(EEL, 3);
 
 function rand(min, max) {
   return min + Math.random() * (max - min);
@@ -276,6 +311,57 @@ function stopSiren() {
   } catch (err) {
     /* oscillator already stopped */
   }
+}
+
+function stopIntake() {
+  if (!intake) return;
+  const node = intake;
+  intake = null;
+  try {
+    node.src.stop();
+  } catch (err) {
+    /* already stopped */
+  }
+}
+
+function startIntake() {
+  const ctx = ensureAudio();
+  if (!ctx || intake) return;
+  const length = Math.floor(ctx.sampleRate * 0.45);
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) {
+    const env = Math.sin((i / length) * Math.PI);
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
+  const src = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  src.buffer = buffer;
+  src.loop = true;
+  filter.type = "bandpass";
+  filter.frequency.value = 420;
+  filter.Q.value = 0.8;
+  gain.gain.value = 0.045;
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  src.start();
+  intake = { src: src, filter: filter, gain: gain };
+}
+
+function updateIntake() {
+  const player = game.player;
+  const sucking = game.state === "playing" && player && player.y <= SURFACE_Y + 2 && player.oxygen < 100 && !game.muted;
+  if (!sucking) {
+    stopIntake();
+    return;
+  }
+  if (!intake) startIntake();
+  if (!intake || !audioCtx) return;
+  const gulp = 0.5 + 0.5 * Math.sin(uiTime * 5.5);
+  intake.filter.frequency.setTargetAtTime(260 + gulp * 520, audioCtx.currentTime, 0.04);
+  intake.gain.gain.setTargetAtTime(0.02 + gulp * 0.04, audioCtx.currentTime, 0.04);
 }
 
 function updateSiren() {
@@ -430,13 +516,35 @@ function spawnDiver(x, y, vx) {
   game.divers.push(diver);
 }
 
+function enemySize(type) {
+  if (type === "shark") return SHARK_SIZE;
+  if (type === "jelly") return JELLY_SIZE;
+  if (type === "eel") return EEL_SIZE;
+  return SUB_SIZE;
+}
+
+function enemyPoints(type) {
+  if (type === "shark") return SCORE_SHARK;
+  if (type === "jelly") return SCORE_JELLY;
+  if (type === "eel") return SCORE_EEL;
+  return SCORE_SUB;
+}
+
+function pickEnemyType() {
+  const roll = Math.random();
+  if (roll < 0.3) return "shark";
+  if (roll < 0.5) return "jelly";
+  if (roll < 0.72) return "eel";
+  return "sub";
+}
+
 function spawnEnemy(forceType) {
   const maxEnemies = 5 + Math.floor(threat() * 4);
   if (game.enemies.length >= maxEnemies) return;
-  const type = forceType || (Math.random() < 0.64 - threat() * 0.22 ? "shark" : "sub");
-  const size = type === "shark" ? SHARK_SIZE : SUB_SIZE;
+  const type = forceType || pickEnemyType();
+  const size = enemySize(type);
   const fromLeft = Math.random() < 0.5;
-  const bob = type === "shark" ? 16 : 7;
+  const bob = type === "jelly" ? 24 : type === "shark" ? 16 : type === "eel" ? 14 : 7;
   const minY = SURFACE_Y + SAFE_DEPTH + bob;
   const maxY = SEABED_Y - size.h - 22 - bob;
   let baseY = minY + Math.random() * Math.max(12, maxY - minY);
@@ -448,7 +556,8 @@ function spawnEnemy(forceType) {
       break;
     }
   }
-  const speed = (type === "shark" ? rand(100, 138) : rand(72, 108)) * (1 + threat() * 0.8);
+  const cruise = type === "jelly" ? rand(36, 58) : type === "eel" ? rand(128, 176) : type === "shark" ? rand(100, 138) : rand(72, 108);
+  const speed = cruise * (1 + threat() * 0.8);
   game.enemies.push({
     type: type,
     x: fromLeft ? -size.w - 8 : W + 8,
@@ -523,14 +632,18 @@ function updatePlayer(dt) {
   }
 }
 
-/* Oxygen drains only while the hull is below the surface. A partial load drops
-   one diver per visit. A full boat of six grants a life and clears the boat. */
+/* Oxygen drains below the surface and refills slowly on top. Surfacing with
+   no diver to drop explodes the hull. A partial load drops one. Six grants a life. */
 function updateOxygen(dt) {
   const player = game.player;
+  const lockWasActive = game.surfaceLock > 0;
+  game.surfaceLock = Math.max(0, game.surfaceLock - dt);
   const surfaced = player.y <= SURFACE_Y + 2;
   if (surfaced) {
-    player.oxygen = Math.min(100, player.oxygen + 48 * dt);
+    player.oxygen = Math.min(100, player.oxygen + 22 * dt);
+    let deposited = false;
     if (!game.wasSurfaced && player.divers > 0) {
+      deposited = true;
       if (player.divers === MAX_DIVERS) {
         const pts = MAX_DIVERS * SCORE_DIVER;
         player.divers = 0;
@@ -545,7 +658,11 @@ function updateOxygen(dt) {
         sfx("surface");
       }
     }
-    game.wasSurfaced = true;
+    const lockEnded = lockWasActive && game.surfaceLock <= 0;
+    if (!deposited && player.divers <= 0 && game.surfaceLock <= 0 && (!game.wasSurfaced || lockEnded)) {
+      loseLife("empty");
+    }
+    if (game.state === "playing" && player.y <= SURFACE_Y + 2) game.wasSurfaced = true;
   } else {
     game.wasSurfaced = false;
     const drain = (4.7 / 1.5) * (1 + threat() * 0.55);
@@ -659,9 +776,10 @@ function handleCollisions() {
     for (let j = 0; j < game.enemies.length; j++) {
       const e = game.enemies[j];
       if (e.dead || !hit(t, e)) continue;
-      const pts = e.type === "shark" ? SCORE_SHARK : SCORE_SUB;
+      const pts = enemyPoints(e.type);
       scoreAdd(pts);
-      spawnExplosion(e.x + e.w / 2, e.y + e.h / 2, e.type === "shark" ? "#c5d5e2" : "#ff7a55");
+      const boom = e.type === "jelly" ? "#e7b6ff" : e.type === "eel" ? "#7dffc3" : e.type === "shark" ? "#c5d5e2" : "#ff7a55";
+      spawnExplosion(e.x + e.w / 2, e.y + e.h / 2, boom);
       spawnFloater(e.x, e.y, "+" + pts);
       e.dead = true;
       t.dead = true;
@@ -719,7 +837,8 @@ function loseLife(reason) {
   game.shake = 0.85;
   game.flash = 0.45;
   spawnExplosion(player.x + player.w / 2, player.y + player.h / 2, "#ffd27a");
-  spawnFloater(W / 2 - 54, H / 2, reason === "oxygen" ? "OUT OF AIR" : "HIT", "#ffd0d0");
+  const label = reason === "oxygen" ? "OUT OF AIR" : reason === "empty" ? "NO DIVER" : "HIT";
+  spawnFloater(W / 2 - 54, H / 2, label, "#ffd0d0");
   sfx("hit");
   if (player.lives <= 0) {
     game.state = "gameover";
@@ -734,11 +853,12 @@ function loseLife(reason) {
 function respawn() {
   const player = game.player;
   player.x = W / 2 - player.w / 2;
-  player.y = SURFACE_Y + 12;
+  player.y = 240;
   player.oxygen = 100;
   player.invuln = 2.4;
   player.facing = 1;
   game.wasSurfaced = false;
+  game.surfaceLock = 1.15;
   game.torpedoes = [];
   game.enemies = game.enemies.filter((e) => Math.hypot(e.x + e.w / 2 - (player.x + player.w / 2), e.y + e.h / 2 - (player.y + player.h / 2)) > 220);
   if (player.divers > 0) spawnFloater(player.x, player.y - 8, "SURFACE", "#b6ffd8");
@@ -911,13 +1031,18 @@ function drawEntities() {
   const time = game.time;
   for (const d of game.divers) {
     const frame = Math.floor(time * 6 + d.phase) % 2 === 0 ? DIVER_A : DIVER_B;
-    drawSprite(ctx, frame, d.x, d.y, 2, DIVER_PALETTE, d.vx >= 0 ? 1 : -1, time);
-    ctx.fillStyle = "rgba(220,245,255,0.55)";
-    ctx.fillRect(d.x + 4, d.y - 6 - (time * 20 + d.phase) % 10, 2, 2);
+    const facing = d.vx >= 0 ? 1 : -1;
+    drawSprite(ctx, frame, d.x, d.y, 2, DIVER_PALETTE, facing, time);
+    const mouth = facing > 0 ? d.x + d.w - 8 : d.x + 6;
+    ctx.fillStyle = "rgba(220,245,255,0.7)";
+    ctx.fillRect(mouth, d.y + 4 - (time * 18 + d.phase) % 12, 2, 2);
   }
   for (const e of game.enemies) {
-    if (e.type === "shark") drawSprite(ctx, SHARK, e.x, e.y, 3, SHARK_PALETTE, e.vx >= 0 ? 1 : -1, time);
-    else drawSprite(ctx, PLAYER_SUB, e.x, e.y, 3, ENEMY_PALETTE, e.vx >= 0 ? 1 : -1, time);
+    const dir = e.vx >= 0 ? 1 : -1;
+    if (e.type === "shark") drawSprite(ctx, SHARK, e.x, e.y, 3, SHARK_PALETTE, dir, time);
+    else if (e.type === "jelly") drawSprite(ctx, JELLY, e.x, e.y, 3, JELLY_PALETTE, 1, time);
+    else if (e.type === "eel") drawSprite(ctx, EEL, e.x, e.y, 3, EEL_PALETTE, dir, time);
+    else drawSprite(ctx, PLAYER_SUB, e.x, e.y, 3, ENEMY_PALETTE, dir, time);
   }
   for (const t of game.torpedoes) drawTorpedo(t);
   const player = game.player;
@@ -1027,7 +1152,8 @@ function drawOverlay() {
     const lines = [
       "Pilot the sub. Rescue the divers.",
       "Surface to drop one diver",
-      "and refill oxygen.",
+      "and slowly refill oxygen.",
+      "No diver on board: the sub explodes.",
       "",
       "Arrows or WASD  move",
       "Space            fire torpedo",
@@ -1142,6 +1268,7 @@ function frame(ts) {
     updateFX(dt);
   }
   updateSiren();
+  updateIntake();
   render();
   requestAnimationFrame(frame);
 }
@@ -1164,6 +1291,7 @@ function startGame() {
   game.flash = 0;
   game.deathLock = false;
   game.wasSurfaced = false;
+  game.surfaceLock = 0;
   game.spawnAcc = 0.4;
   game.diverAcc = 0;
   game.fireCd = 0.2;
@@ -1177,6 +1305,7 @@ function startGame() {
   game.floaters = [];
   spawnDiver(640, 300, -34);
   stopSiren();
+  stopIntake();
   setButtons();
 }
 
@@ -1185,6 +1314,7 @@ function togglePause() {
   else if (game.state === "paused") game.state = "playing";
   setButtons();
   updateSiren();
+  updateIntake();
 }
 
 function onKeyDown(e) {
@@ -1199,6 +1329,7 @@ function onKeyDown(e) {
   else if (e.code === "KeyM") {
     game.muted = !game.muted;
     updateSiren();
+    updateIntake();
   }
 }
 

@@ -23,6 +23,6 @@ Open [http://localhost:8000](http://localhost:8000) in a browser.
 
 ## How to play
 
-Touch friendly divers to bring them aboard (six maximum). Surface anywhere to drop off one diver and refill oxygen. Dive and surface again to drop another. Surfacing with six divers clears the boat and awards an extra life. Torpedoes destroy sharks and enemy submarines. Running out of oxygen, or colliding with an enemy or an enemy torpedo, costs a life. You start with three lives.
+Touch friendly divers to bring them aboard (six maximum). Surface anywhere to drop off one diver and slowly refill oxygen. Surfacing with no diver aboard explodes the sub. Dive and surface again to drop another. Surfacing with six divers clears the boat and awards an extra life. Torpedoes destroy sharks, jellyfish, eels, and enemy submarines. Running out of oxygen, or colliding with an enemy or an enemy torpedo, costs a life. You start with three lives.
 
-Score: shark 40, enemy sub 80, each delivered diver 100. Spawn rate, enemy speed, and oxygen drain rise as the score climbs. Enemy submarines begin firing after 500 points. A siren sounds while the oxygen bar is red. Press M to mute.
+Score: shark 40, jellyfish 50, eel 70, enemy sub 80, each delivered diver 100. Spawn rate, enemy speed, and oxygen drain rise as the score climbs. Enemy submarines begin firing after 500 points. A siren sounds while the oxygen bar is red. Press M to mute.
