@@ -151,13 +151,52 @@ const game = {
   decor: [],
 };
 
+const SCORE_FILE = "data/highscore.json";
+const SCORE_API = "https://crudcrud.com/api/fefb455c70d7409e8a88707beabe46a9/scores/6af2ab987ffe9c03e8db90d2";
+let scoreTimer = 0;
+
+function readScore(value) {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 function loadHighScore() {
   try {
-    const n = Number(localStorage.getItem(HIGH_KEY));
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    return readScore(localStorage.getItem(HIGH_KEY));
   } catch (err) {
     return 0;
   }
+}
+
+function rememberHighScore(value) {
+  const n = readScore(value);
+  if (n <= game.highScore) return;
+  game.highScore = n;
+  try {
+    localStorage.setItem(HIGH_KEY, String(n));
+  } catch (err) {
+    /* private mode */
+  }
+}
+
+function publishHighScore(value) {
+  const n = readScore(value);
+  if (!n) return;
+  fetch(SCORE_API, { cache: "no-store" })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      const current = data ? readScore(data.highScore) : 0;
+      if (current >= n) {
+        rememberHighScore(current);
+        return null;
+      }
+      return fetch(SCORE_API, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ highScore: n }),
+      });
+    })
+    .catch(() => {});
 }
 
 function saveHighScore() {
@@ -166,6 +205,30 @@ function saveHighScore() {
   } catch (err) {
     /* private mode */
   }
+  if (scoreTimer) clearTimeout(scoreTimer);
+  scoreTimer = setTimeout(() => {
+    scoreTimer = 0;
+    publishHighScore(game.highScore);
+  }, 800);
+}
+
+function loadSharedHighScore() {
+  rememberHighScore(loadHighScore());
+  fetch(SCORE_FILE, { cache: "no-store" })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      if (data) rememberHighScore(data.highScore);
+    })
+    .catch(() => {});
+  fetch(SCORE_API, { cache: "no-store" })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      if (!data) return;
+      const remote = readScore(data.highScore);
+      if (remote > game.highScore) rememberHighScore(remote);
+      else if (game.highScore > remote) publishHighScore(game.highScore);
+    })
+    .catch(() => {});
 }
 
 function spriteSize(rows, scale) {
@@ -521,39 +584,46 @@ function pickEnemyType() {
   return "sub";
 }
 
+function formationCount(type) {
+  if (type !== "sub") return 1;
+  const level = threat();
+  if (level < 0.3) return 1;
+  if (level < 0.65) return 2;
+  return Math.random() < 0.55 ? 3 : 2;
+}
+
 function spawnEnemy(forceType) {
-  const maxEnemies = 5 + Math.floor(threat() * 4);
-  if (game.enemies.length >= maxEnemies) return;
   const type = forceType || pickEnemyType();
+  const count = formationCount(type);
+  const maxEnemies = 6 + Math.floor(threat() * 5);
+  if (game.enemies.length >= maxEnemies) return;
+  const slots = Math.min(count, maxEnemies - game.enemies.length);
   const size = enemySize(type);
   const fromLeft = Math.random() < 0.5;
   const bob = type === "jelly" ? 24 : type === "shark" ? 16 : type === "eel" ? 14 : 7;
   const minY = SURFACE_Y + SAFE_DEPTH + bob;
   const maxY = SEABED_Y - size.h - 22 - bob;
-  let baseY = minY + Math.random() * Math.max(12, maxY - minY);
-  for (let i = 0; i < 6; i++) {
-    const y = minY + Math.random() * Math.max(12, maxY - minY);
-    const crowded = game.enemies.some((e) => Math.abs(e.baseY - y) < 36);
-    if (!crowded) {
-      baseY = y;
-      break;
-    }
-  }
+  const span = Math.max(12, maxY - minY);
   const cruise = type === "jelly" ? rand(36, 58) : type === "eel" ? rand(128, 176) : type === "shark" ? rand(100, 138) : rand(72, 108);
   const speed = cruise * (1 + threat() * 0.8);
-  game.enemies.push({
-    type: type,
-    x: fromLeft ? -size.w - 8 : W + 8,
-    y: baseY,
-    baseY: baseY,
-    w: size.w,
-    h: size.h,
-    vx: fromLeft ? speed : -speed,
-    bob: bob,
-    phase: Math.random() * Math.PI * 2,
-    freq: rand(1.2, 1.8),
-    fireCd: rand(1.6, 3.4),
-  });
+  const vx = fromLeft ? speed : -speed;
+  const x = fromLeft ? -size.w - 8 : W + 8;
+  for (let i = 0; i < slots; i++) {
+    const baseY = minY + (span * (i + 1)) / (slots + 1);
+    game.enemies.push({
+      type: type,
+      x: x,
+      y: baseY,
+      baseY: baseY,
+      w: size.w,
+      h: size.h,
+      vx: vx,
+      bob: bob,
+      phase: Math.random() * Math.PI * 2,
+      freq: rand(1.2, 1.8),
+      fireCd: rand(1.6, 3.4),
+    });
+  }
 }
 
 function spawnPlayerTorpedo() {
@@ -1455,6 +1525,7 @@ function onKeyUp(e) {
 
 function init() {
   game.highScore = loadHighScore();
+  loadSharedHighScore();
   buildDecor();
   spriteSize(SHARK, 3);
   window.addEventListener("keydown", onKeyDown);
