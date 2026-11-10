@@ -134,11 +134,13 @@ const game = {
   surfaceLock: 0,
   spawnAcc: 0,
   diverAcc: 0,
+  boatAcc: 2,
   fireCd: 0,
   fullCd: 0,
   muted: false,
   player: null,
   enemies: [],
+  boats: [],
   divers: [],
   torpedoes: [],
   explosions: [],
@@ -588,10 +590,13 @@ function updatePlayer(dt) {
   const player = game.player;
   const input = readInput();
   if (input.x !== 0) player.facing = input.x > 0 ? 1 : -1;
+  const filling = player.y <= SURFACE_Y + 2 && player.oxygen < 100;
+  const moveY = filling && input.y > 0 ? 0 : input.y;
   player.x += input.x * PLAYER_SPEED * dt;
-  player.y += input.y * PLAYER_SPEED * dt;
+  player.y += moveY * PLAYER_SPEED * dt;
   player.x = clamp(player.x, 6, W - player.w - 6);
   player.y = clamp(player.y, SURFACE_Y - 4, SEABED_Y - player.h - 12);
+  if (filling) player.y = Math.min(player.y, SURFACE_Y + 2);
   player.invuln = Math.max(0, player.invuln - dt);
   game.fireCd = Math.max(0, game.fireCd - dt);
   game.fullCd = Math.max(0, game.fullCd - dt);
@@ -731,6 +736,32 @@ function updateFX(dt) {
 
 /* Spawn interval and speed scale with score so the opening is readable
    and later runs fill both lanes without becoming a solid wall. */
+function spawnBoat() {
+  if (game.boats.length >= 1) return;
+  const fromLeft = Math.random() < 0.5;
+  const w = 78;
+  const h = 20;
+  const speed = rand(78, 108);
+  game.boats.push({
+    x: fromLeft ? -w - 8 : W + 8,
+    y: SURFACE_Y - 12,
+    w: w,
+    h: h,
+    vx: fromLeft ? speed : -speed,
+  });
+}
+
+function updateBoats(dt) {
+  for (let i = game.boats.length - 1; i >= 0; i--) {
+    const boat = game.boats[i];
+    boat.x += boat.vx * dt;
+    boat.y = SURFACE_Y - 12;
+    if ((boat.vx > 0 && boat.x > W + 30) || (boat.vx < 0 && boat.x < -boat.w - 30)) {
+      game.boats.splice(i, 1);
+    }
+  }
+}
+
 function updateSpawns(dt) {
   game.spawnAcc += dt;
   const interval = 2.35 - threat() * 1.4;
@@ -742,8 +773,14 @@ function updateSpawns(dt) {
   game.diverAcc += dt;
   const diverInterval = 6.2 - threat() * 1.8;
   if (game.diverAcc >= diverInterval && game.divers.length < 3) {
-    game.diverAcc = 0;
+  game.diverAcc = 0;
+  game.boatAcc = 2;
     spawnDiver();
+  }
+  game.boatAcc += dt;
+  if (game.boatAcc >= 11 - threat() * 3) {
+    game.boatAcc = 0;
+    spawnBoat();
   }
 }
 
@@ -783,6 +820,12 @@ function handleCollisions() {
     for (let i = 0; i < game.torpedoes.length; i++) {
       const shot = game.torpedoes[i];
       if (!shot.friendly && !(shot.grace > 0) && hit(player, shot)) {
+        loseLife("hit");
+        return;
+      }
+    }
+    for (let i = 0; i < game.boats.length; i++) {
+      if (hit(player, game.boats[i], -4)) {
         loseLife("hit");
         return;
       }
@@ -852,6 +895,7 @@ function update(dt) {
   if (game.state !== "playing") return;
   updateTorpedoes(dt);
   updateEnemies(dt);
+  updateBoats(dt);
   updateDivers(dt);
   updateSpawns(dt);
   handleCollisions();
@@ -1005,43 +1049,43 @@ function drawSwimmer(x, y, dir, time, phase) {
   ctx.lineCap = "round";
 
   ctx.fillStyle = "#7fd4ef";
-  ctx.fillRect(-18, -5, 7, 11);
+  ctx.fillRect(-16, -3, 4, 8);
   ctx.fillStyle = "#e8f8ff";
-  ctx.fillRect(-17, -4, 2, 4);
+  ctx.fillRect(-15, -2, 1, 3);
   ctx.strokeStyle = "#163044";
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(-11, -2);
-  ctx.quadraticCurveTo(-2, -9, 9, -2);
+  ctx.moveTo(-12, -1);
+  ctx.quadraticCurveTo(-2, -7, 10, -1);
   ctx.stroke();
 
   ctx.fillStyle = "#ff8a3d";
   ctx.beginPath();
-  ctx.ellipse(-1, 2, 12, 5.5, kick * 0.08, 0, Math.PI * 2);
+  ctx.ellipse(-1, 1, 11, 3.1, kick * 0.06, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = "#f0c2a0";
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
   ctx.moveTo(2, 0);
-  ctx.lineTo(11, -3 + kick * 2);
+  ctx.lineTo(11, -2 + kick);
   ctx.stroke();
   ctx.beginPath();
   ctx.moveTo(-4, 1);
-  ctx.lineTo(-10, 4 - kick * 2);
+  ctx.lineTo(-9, 3 - kick);
   ctx.stroke();
 
   ctx.fillStyle = "#f3c7a4";
   ctx.beginPath();
-  ctx.arc(11, -1, 5.2, 0, Math.PI * 2);
+  ctx.arc(12, -1, 3.6, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#102033";
-  ctx.fillRect(11, -3, 6, 3);
+  ctx.fillRect(12, -2, 5, 2);
   ctx.fillStyle = "#9ee7ff";
-  ctx.fillRect(12, -2, 4, 2);
+  ctx.fillRect(13, -1, 3, 1);
 
   ctx.strokeStyle = "#ff8a3d";
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(-10, 2);
   ctx.quadraticCurveTo(-15, 2 + kick * 4, -18, 1 + kick * 6);
@@ -1065,6 +1109,27 @@ function drawSwimmer(x, y, dir, time, phase) {
   ctx.restore();
 }
 
+function drawBoat(boat) {
+  const dir = boat.vx >= 0 ? 1 : -1;
+  const light = Math.sin(uiTime * 10) > 0;
+  ctx.save();
+  ctx.translate(boat.x + boat.w / 2, boat.y + boat.h / 2);
+  ctx.scale(dir, 1);
+  ctx.fillStyle = "#1d4e89";
+  ctx.fillRect(-34, -2, 68, 10);
+  ctx.fillStyle = "#f4f7fb";
+  ctx.fillRect(-30, 1, 46, 3);
+  ctx.fillStyle = "#d9e2ea";
+  ctx.fillRect(-8, -12, 22, 11);
+  ctx.fillStyle = "#9ad7ff";
+  ctx.fillRect(-4, -9, 8, 5);
+  ctx.fillStyle = light ? "#ff4d4d" : "#3d7dff";
+  ctx.fillRect(-2, -16, 5, 4);
+  ctx.fillStyle = light ? "#3d7dff" : "#ff4d4d";
+  ctx.fillRect(6, -16, 5, 4);
+  ctx.restore();
+}
+
 function drawTorpedo(t) {
   const dir = t.vx >= 0 ? 1 : -1;
   ctx.fillStyle = t.friendly ? "rgba(255, 214, 90, 0.55)" : "rgba(255, 120, 90, 0.45)";
@@ -1085,6 +1150,7 @@ function drawEntities() {
     ctx.fillStyle = "rgba(220,245,255,0.7)";
     ctx.fillRect(mouth, d.y + 4 - (time * 18 + d.phase) % 12, 2, 2);
   }
+  for (const boat of game.boats) drawBoat(boat);
   for (const e of game.enemies) {
     const dir = e.vx >= 0 ? 1 : -1;
     if (e.type === "shark") drawSprite(ctx, SHARK, e.x, e.y, 3, SHARK_PALETTE, dir, time);
@@ -1200,8 +1266,9 @@ function drawOverlay() {
     const lines = [
       "Pilot the sub. Rescue the divers.",
       "Surface to drop one diver",
-      "and slowly refill oxygen.",
+      "Stay up until oxygen is full.",
       "No diver on board: the sub explodes.",
+      "Dodge patrol boats on the surface.",
       "",
       "Arrows or WASD  move",
       "Space            fire torpedo",
@@ -1346,6 +1413,7 @@ function startGame() {
   game.fullCd = 0;
   game.player = makePlayer();
   game.enemies = [];
+  game.boats = [];
   game.divers = [];
   game.torpedoes = [];
   game.explosions = [];
