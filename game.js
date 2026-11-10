@@ -549,16 +549,18 @@ function makePlayer() {
   };
 }
 
-function spawnDiver(x, y, vx) {
+function spawnDiver() {
+  const fromLeft = Math.random() < 0.5;
+  const y = rand(SURFACE_Y + SAFE_DEPTH + 20, SEABED_Y - 80);
   const diver = {
-    x: x == null ? rand(40, W - 80) : x,
-    y: y == null ? rand(SURFACE_Y + SAFE_DEPTH + 20, SEABED_Y - 80) : y,
+    x: fromLeft ? -DIVER_SIZE.w - 6 : W + 6,
+    y: y,
     w: DIVER_SIZE.w,
     h: DIVER_SIZE.h,
-    vx: vx == null ? (Math.random() < 0.5 ? -32 : 32) : vx,
+    vx: fromLeft ? rand(28, 44) : -rand(28, 44),
     phase: Math.random() * 6,
+    baseY: y,
   };
-  diver.baseY = diver.y;
   game.divers.push(diver);
 }
 
@@ -604,12 +606,31 @@ function spawnEnemy(forceType) {
   const minY = SURFACE_Y + SAFE_DEPTH + bob;
   const maxY = SEABED_Y - size.h - 22 - bob;
   const span = Math.max(12, maxY - minY);
+  const lanes = [0, 1, 2, 3, 4].map((i) => minY + (span * i) / 4);
+  const laneFree = (y) => !game.enemies.some((e) => Math.abs(e.baseY - y) < 46);
+  const sets = slots === 1 ? [[0], [4], [1], [3], [2]] : slots === 2 ? [[0, 4], [1, 3], [0, 3], [1, 4]] : [[0, 2, 4], [0, 1, 4], [0, 3, 4]];
+  let chosen = sets[0];
+  let fewest = 99;
+  for (let s = sets.length - 1; s > 0; s--) {
+    const swap = Math.floor(Math.random() * (s + 1));
+    const held = sets[s];
+    sets[s] = sets[swap];
+    sets[swap] = held;
+  }
+  for (let s = 0; s < sets.length; s++) {
+    const busy = sets[s].reduce((n, i) => n + (laneFree(lanes[i]) ? 0 : 1), 0);
+    if (busy < fewest) {
+      chosen = sets[s];
+      fewest = busy;
+      if (busy === 0) break;
+    }
+  }
   const cruise = type === "jelly" ? rand(36, 58) : type === "eel" ? rand(128, 176) : type === "shark" ? rand(100, 138) : rand(72, 108);
   const speed = cruise * (1 + threat() * 0.8);
   const vx = fromLeft ? speed : -speed;
   const x = fromLeft ? -size.w - 8 : W + 8;
-  for (let i = 0; i < slots; i++) {
-    const baseY = minY + (span * (i + 1)) / (slots + 1);
+  for (let i = 0; i < chosen.length; i++) {
+    const baseY = clamp(lanes[chosen[i]] + rand(-10, 10), minY, maxY);
     game.enemies.push({
       type: type,
       x: x,
@@ -772,10 +793,10 @@ function updateDivers(dt) {
   for (const d of game.divers) {
     d.x += d.vx * dt;
     d.y = d.baseY + Math.sin(game.time * 2.2 + d.phase) * 8;
-    if (d.x < 12) {
+    if (d.vx < 0 && d.x < 12) {
       d.x = 12;
       d.vx = Math.abs(d.vx);
-    } else if (d.x > W - d.w - 12) {
+    } else if (d.vx > 0 && d.x > W - d.w - 12) {
       d.x = W - d.w - 12;
       d.vx = -Math.abs(d.vx);
     }
@@ -843,8 +864,7 @@ function updateSpawns(dt) {
   game.diverAcc += dt;
   const diverInterval = 6.2 - threat() * 1.8;
   if (game.diverAcc >= diverInterval && game.divers.length < 3) {
-  game.diverAcc = 0;
-  game.boatAcc = 2;
+    game.diverAcc = 0;
     spawnDiver();
   }
   game.boatAcc += dt;
@@ -928,6 +948,7 @@ function loseLife(reason) {
   game.deathLock = true;
   const player = game.player;
   player.lives -= 1;
+  player.divers = 0;
   game.shake = 0.85;
   game.flash = 0.45;
   spawnExplosion(player.x + player.w / 2, player.y + player.h / 2, "#ffd27a");
@@ -955,7 +976,6 @@ function respawn() {
   game.surfaceLock = 1.15;
   game.torpedoes = [];
   game.enemies = game.enemies.filter((e) => Math.hypot(e.x + e.w / 2 - (player.x + player.w / 2), e.y + e.h / 2 - (player.y + player.h / 2)) > 220);
-  if (player.divers > 0) spawnFloater(player.x, player.y - 8, "SURFACE", "#b6ffd8");
 }
 
 function update(dt) {
@@ -1489,7 +1509,7 @@ function startGame() {
   game.explosions = [];
   game.particles = [];
   game.floaters = [];
-  spawnDiver(640, 300, -34);
+  spawnDiver();
   stopSiren();
   stopIntake();
   setButtons();
